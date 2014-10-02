@@ -241,6 +241,10 @@ def createDataSettersForTableType(dataAccessMethodsFile, controllerAccessMethods
               + '\treturn new PostResult(PostResult.ResultType.Success);\n'
               + '}\n\n')
 
+def createDataSetterDropStatements(sqlStatementFile, tableName):
+    sqlStatementFile.write('\n\ndrop procedure Set' + tableName + ';\n')
+    sqlStatementFile.write('drop type ' + tableName + ';\n\n')
+
 def generateDataSettersFromTableDefinitions(controllerAccessMethodsFile, dataAccessMethodsFile, sqlStatementFile, connection):
     dataAccessMethodsFile.write('\n')
     controllerAccessMethodsFile.write('\n')
@@ -251,6 +255,7 @@ def generateDataSettersFromTableDefinitions(controllerAccessMethodsFile, dataAcc
         foreignKeys = getTableConstraints(connection, tableName, 'foreign key')
         createTableType(sqlStatementFile, tableName, tableCols, primaryKeys, connection)
         createMergeStatementOnTableType(sqlStatementFile, tableName, tableCols, primaryKeys, connection)
+        createDataSetterDropStatements(sqlStatementFile, tableName)
         createDataSettersForTableType(dataAccessMethodsFile, controllerAccessMethodsFile, tableName, tableCols, primaryKeys, connection)
 
 # ACAS functionality only
