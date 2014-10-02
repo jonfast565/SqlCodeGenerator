@@ -307,9 +307,9 @@ def generateDataAccessorsFromStoredProcedure(controllerAccessMethodsFile, dataAc
               + '\treturn ' + 'Models.' + ('Transaction' if 'transaction' in procName.lower() else 'ReferentialData') + '.' + procName + '(' + untypedParamsString + ')' + ';\n'
               + '}\n\n')
 def main():
-    with open('controllerMethodsFile.cs', 'w') as controllerAccessMethodsFile:
-        with open('dataAccessMethodsFile.cs', 'w') as dataAccessMethodsFile:
-            with open('sqlStatementFile.sql', 'w') as sqlStatementFile:
+    with open('../../controllerMethodsFile.cs', 'w') as controllerAccessMethodsFile:
+        with open('../../dataAccessMethodsFile.cs', 'w') as dataAccessMethodsFile:
+            with open('../../sqlStatementFile.sql', 'w') as sqlStatementFile:
                 with pymssql.connect(host='tst25sqldbv04.test.lab.americancapital.com', database='DealSpanDEV') as connection:
                         # getProcs(connection)
                         getTablesStartingWith(connection, "Transaction")
