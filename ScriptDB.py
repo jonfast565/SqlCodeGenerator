@@ -56,6 +56,12 @@ def sqlProcedureNameIsPlural(name, exceptions):
         return True
     return name.endswith('s') or name.lower().endswith('list') or name.lower().endswith('data') or name.lower().endswith('sdeleted')
 
+def sqlSetToPutMethodName(procName):
+    if procName[:3].lower() == "set":
+        return "Put" + procName[3:]
+    else:
+        return procName
+
 def setProcs(connection):
     cur = connection.cursor()
     queryString = "select SPECIFIC_NAME \n" \
@@ -321,9 +327,7 @@ def generateDataAccessorsFromStoredProcedure(controllerAccessMethodsFile, dataAc
                     routeParamsString += '}/'
 
         paramsString = paramsString.rstrip(commaDelim)
-        # paramsString = insertParamNewLines(paramsString)
         paramsStringSansTransaction = paramsStringSansTransaction.rstrip(commaDelim)
-        # paramsStringSansTransaction = insertParamNewLines(paramsStringSansTransaction)
         untypedParamsString = untypedParamsString.rstrip(commaDelim)
         sqlParamsString = sqlParamsString.rstrip(commaNewLineDelim)
         routeParamsString = routeParamsString.rstrip(slashDelim)
@@ -355,7 +359,7 @@ def generateDataAccessorsFromStoredProcedure(controllerAccessMethodsFile, dataAc
         paramsTemplate = (commaDelim + 'new SqlParameter[] {\n' if len(sqlParamsString) != 0 else '') + sqlParamsString + ('\n\t}' if len(sqlParamsString) != 0 else '')
         
         dataAccessMethodsFile.write(getXMLComment(procName, action) +
-              'internal static ' + actionTemplate + ' ' + procName + '(' + paramsString + ')' + ' \n{\n'
+              'internal static ' + actionTemplate + ' ' + sqlSetToPutMethodName(procName) + '(' + paramsString + ')' + ' \n{\n'
               + '\t' + ('return ' if action.lower() == 'get' else '') + conversionTemplateBegin + 'DataAccess.' + actionMethodName + '(\"' + procName
               + '\"' + paramsTemplate + ')' + conversionTemplateEnd + ';\n' + '}\n\n')
         controllerAccessMethodsFile.write(getXMLComment(procName, 'Get')
