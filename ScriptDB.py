@@ -20,6 +20,8 @@ procPluralExceptions = [
         "TransactionStatusHistory"
     ]
 
+additionalJoinColumns = ['TransactionID', 'TransactionSecurityID', 'SecurityFacilityID']
+skipUpdateColumns = ['CreatedBy', 'CreatedDatetime']
 skipFields = ['username']
 replacementFields = { 'username' : 'DealSpan.Security.GetUsername()'}
 
@@ -39,14 +41,15 @@ def getXMLComment(title, does):
     title = re.sub(r"(\w)([A-Z])", r"\1 \2", title).lower()
     return '/// <summary>\n/// ' + does + 's ' + title + '\n/// </summary>' + ('\n/// <returns>' + title + '</returns>' if does.lower() == 'get' else '') + '\n'
 
+def camelCase(variable):
+    return variable[0].lower() + parameter[1:]
+
 def sqlParamToParamName(parameter):
-    # remove @ symbol
-    parameter = parameter[1:]
-    # lower case the first character
-    return parameter[0].lower() + parameter[1:]
+    # remove @ symbol and lower case the first character
+    return camelCase(parameter[1:])
 
 def parseRouteName(route):
-    # remove get or set
+    # remove get/set/put/etc.
     if "get" in route.lower() or "set" in route.lower():
         return route[3:]
     return route
@@ -197,16 +200,23 @@ def createMergeStatementOnTableType(sqlStatementFile, tableName, tableCols, tabl
     sourceTableVariableName = '@' + sourceTableAlias[0].upper() + sourceTableAlias[1:] + "Table"
     tableTypeName = tableName + "Table"
     targetTableAlias = 'target'
+
+    tableColNames = map((lambda row : row[0]), tableCols)
+
     mergeString = ''
     mergeString += '\n-- Merge statement for: ' + tableName + '\n'
     mergeString += "create procedure Set" + tableName + "\n"
     mergeString += "\t" + sourceTableVariableName + " " + tableTypeName + " readonly\n" + "as\n" + "begin\n"
+
     """ if tableHasIdentity(tableName, connection):
         sqlStatementFile.write("\tset IDENTITY_INSERT " + tableName + " on;\n") """
+
     mergeString += "\tmerge " + tableName + " as " + targetTableAlias + '\n'
     mergeString += "\tusing " + sourceTableVariableName + " as " + sourceTableAlias + '\n'
+
     joinColumnString = ' '
     firstColumn = True
+
     identityColumnName = getIdentityColumn(tableName, connection)
     if len(tableConstraints) == 0:
         mergeString = '-- Merge statement could not be written for ' + tableName \
@@ -221,38 +231,57 @@ def createMergeStatementOnTableType(sqlStatementFile, tableName, tableCols, tabl
             else:
                 joinColumnString += "\t\tand "
             joinColumnString += sourceTableAlias + "." + pkey[1] + " = " + targetTableAlias + "." + pkey[1] + '\n'
+        for joinCol in additionalJoinColumns:
+            if joinCol in tableColNames:
+                if firstColumn == True:
+                    joinColumnString += "\t\ton "
+                    firstColumn = False
+                else:
+                    joinColumnString += "\t\tand "
+                joinColumnString += sourceTableAlias + "." + joinCol + " = " + targetTableAlias + "." + joinCol + '\n'
+
     mergeString += joinColumnString
     mergeString += "\twhen matched then update set\n"
+
     updateCols = ''
     for targetCol in tableCols:
-        if targetCol[0] != identityColumnName:
+        if targetCol[0] != identityColumnName and targetCol[0] not in skipUpdateColumns and targetCol[0] not in additionalJoinColumns:
             updateCols += "\t\t" + targetCol[0] + " = " + sourceTableAlias + "." + targetCol[0] + ", \n"
+
     updateCols = updateCols.rstrip(", \n")
     updateCols += '\n'
+
     mergeString += updateCols
     mergeString += "\twhen not matched by target then\n"
+
     insertCols = ''
     insertSourceCols = '';
     for targetCol in tableCols:
         if targetCol[0] != identityColumnName:
             insertCols += "\t\t\t" + targetCol[0] + ", \n"
             insertSourceCols += "\t\t\t" + sourceTableAlias + "." + targetCol[0] + ", \n"
+
     insertCols = insertCols.rstrip(", \n")
     insertSourceCols = insertSourceCols.rstrip(", \n")
+
     mergeString += "\t\tinsert \n\t\t(\n" + insertCols + "\n\t\t)\n\t\tvalues\n\t\t(\n" + insertSourceCols + "\n\t\t)\n"
     mergeString += "\twhen not matched by source then delete;\n"
     mergeString += 'end;\ngo\n'
+
     sqlStatementFile.write(mergeString)
 
 # ACAS functionality only
 def createDataSettersForTableType(dataAccessMethodsFile, controllerAccessMethodsFile, tableName, tableCols, tableConstraints, connection):
+
     camelCaseTableName = tableName[0].lower() + tableName[1:]
+
     dataAccessMethodsFile.write(getXMLComment(tableName, 'Set') +
               'internal static void Set' + tableName + '(DataTable ' + camelCaseTableName + 'Table)' + ' \n{\n'
               + '\tDataAccess.SetData(\"' + 'Set' + tableName + '\"'
               + ', new SqlParameter[] {\n'
               + '\t\t new SqlParameter(' + camelCaseTableName + 'Table)'
               + '\n\t}' + ')' + ';\n' + '}\n\n')
+    
     controllerAccessMethodsFile.write(getXMLComment(tableName, 'Set')
               + '[Route(\"' + tableName + '\")]\n'
               + 'public PostResult Put' + tableName + '([FromBody] DataTable ' + camelCaseTableName + 'Table)\n'
@@ -311,14 +340,12 @@ def generateDataAccessorsFromStoredProcedure(controllerAccessMethodsFile, dataAc
         defaultValueParamsString = ''
         routeParamsString = '/'
         for sqlParameter in cur:
-                paramsList.append((sqlParameter[0], typeConverter[sqlParameter[1]]["type"], sqlParamToParamName(sqlParameter[0])))
-                if not sqlParamToParamName(sqlParameter[0]) in skipFields:
-                    untypedParamsString += ('TransactionID' if sqlParamToParamName(sqlParameter[0]) == 'transactionID' else sqlParamToParamName(sqlParameter[0])) + ', '
+                paramsList.append((sqlParameter[0], typeConverter[sqlParameter[1]]["type"], sqlParamToParamName(sqlParameter[0])))    
                 aliasedSqlParam = (replacementFields[sqlParamToParamName(sqlParameter[0])] if sqlParamToParamName(sqlParameter[0]) in replacementFields.keys() else sqlParamToParamName(sqlParameter[0]))
                 sqlParamsString += '\t\tnew SqlParameter(\"' + sqlParameter[0] + '\", ' + aliasedSqlParam + '), \n'
                 if not sqlParamToParamName(sqlParameter[0]) in skipFields:
+                    untypedParamsString += ('TransactionID' if sqlParamToParamName(sqlParameter[0]) == 'transactionID' else sqlParamToParamName(sqlParameter[0])) + ', '
                     paramsString += typeConverter[sqlParameter[1]]["type"] + ' ' + sqlParamToParamName(sqlParameter[0]) + ', '
-                if not sqlParamToParamName(sqlParameter[0]) in skipFields:
                     paramsStringSansTransaction += typeConverter[sqlParameter[1]]["type"] + ' ' + sqlParamToParamName(sqlParameter[0]) + ', '
                     defaultValueParamsString += '\t' + typeConverter[sqlParameter[1]]["type"] + ' ' + sqlParamToParamName(sqlParameter[0]) + ' = ' + typeConverter[sqlParameter[1]]["default"] + ';\n'
                     routeParamsString += '{' + sqlParamToParamName(sqlParameter[0])
@@ -375,8 +402,8 @@ def main():
                 with pymssql.connect(host='tst25sqldbv04.test.lab.americancapital.com', database='DealSpanDEV') as connection:
                         setProcs(connection)
                         # getProcs(connection)
-                        # getTablesStartingWith(connection, "Transaction")
-                        generateDataAccessorsFromStoredProcedure(controllerAccessMethodsFile, dataAccessMethodsFile, 'set', connection)
-                        # generateDataSettersFromTableDefinitions(controllerAccessMethodsFile, dataAccessMethodsFile, sqlStatementFile, connection)
+                        getTablesStartingWith(connection, "Transaction")
+                        # generateDataAccessorsFromStoredProcedure(controllerAccessMethodsFile, dataAccessMethodsFile, 'set', connection)
+                        generateDataSettersFromTableDefinitions(controllerAccessMethodsFile, dataAccessMethodsFile, sqlStatementFile, connection)
 
 main()
