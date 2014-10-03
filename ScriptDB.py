@@ -4,21 +4,35 @@
 import re
 import pymssql
 
+# common delimiters
+commaDelim = ', '
+commaNewLineDelim = ', \n'
+slashDelim = '/'
+
 # DealSpan proc names (imported from database)
 tableNames = []
 procNames = []
+
+# ACAS specific table names
 procPluralExceptions = [
         "TransactionsLastUpdated",
         "TransactionsRelated",
         "TransactionStatusHistory"
     ]
 
+skipFields = ['username']
+replacementFields = { 'username' : 'DealSpan.Security.GetUsername()'}
+
 typeConverter = { 'nvarchar' : {'type' : 'string', 'default' : '\"\"' },
                    'varchar' : { 'type' : 'string', 'default' : '\"\"' },
+                   'text' : { 'type' : 'string', 'default' : '\"\"' },
                    'int' : { 'type' : 'int', 'default' : '0' },
                    'decimal' : { 'type' : 'decimal', 'default' : '0.0' },
                    'bit' : { 'type' : 'bool', 'default' : 'false' },
-                   'table type' : { 'type' : 'DataTable', 'default' : 'null'}
+                   'table type' : { 'type' : 'DataTable', 'default' : 'new DataTable()'},
+                   'datetime' : {'type' : 'DateTime', 'default' : 'new DateTime()'},
+                   'date' : {'type' : 'DateTime', 'default' : 'new DateTime()'},
+                   'datetimeoffset' : {'type' : 'DateTimeOffset', 'default' : 'new DateTimeOffset()'}
                    }
 
 def getXMLComment(title, does):
@@ -40,7 +54,7 @@ def parseRouteName(route):
 def sqlProcedureNameIsPlural(name, exceptions):
     if name in exceptions:
         return True
-    return name.endswith('s') or name.lower().endswith('list') or name.lower().endswith('data')
+    return name.endswith('s') or name.lower().endswith('list') or name.lower().endswith('data') or name.lower().endswith('sdeleted')
 
 def setProcs(connection):
     cur = connection.cursor()
@@ -242,7 +256,8 @@ def createDataSettersForTableType(dataAccessMethodsFile, controllerAccessMethods
               + '}\n\n')
 
 def createDataSetterDropStatements(sqlStatementFile, tableName):
-    sqlStatementFile.write('\n\ndrop procedure Set' + tableName + ';\n')
+    sqlStatementFile.write('\n\n-- Drops the table type and stored procedure for ' + tableName + '\n')
+    sqlStatementFile.write('drop procedure Set' + tableName + ';\n')
     sqlStatementFile.write('drop type ' + tableName + ';\n\n')
 
 def generateDataSettersFromTableDefinitions(controllerAccessMethodsFile, dataAccessMethodsFile, sqlStatementFile, connection):
@@ -258,8 +273,20 @@ def generateDataSettersFromTableDefinitions(controllerAccessMethodsFile, dataAcc
         createDataSetterDropStatements(sqlStatementFile, tableName)
         createDataSettersForTableType(dataAccessMethodsFile, controllerAccessMethodsFile, tableName, tableCols, primaryKeys, connection)
 
+def insertParamNewLines(paramsString, count = 2, tabs = 4):
+    newLinedParamString = ''
+    if len(paramsString.split(commaDelim)) > 3:
+        paramArray = paramsString.split(commaDelim)
+        counter = 0
+        for param in paramArray:
+            newLinedParamString += ('\t' * tabs) + param + commaDelim
+            counter += 1
+            if counter % count == 0:
+                newLinedParamString += '\n'
+    return newLinedParamString.rstrip(commaDelim)
+
 # ACAS functionality only
-def generateDataAccessorsFromStoredProcedure(controllerAccessMethodsFile, dataAccessMethodsFile, connection):
+def generateDataAccessorsFromStoredProcedure(controllerAccessMethodsFile, dataAccessMethodsFile, action, connection):
     dataAccessMethodsFile.write('\n')
     controllerAccessMethodsFile.write('\n')
     for procName in procNames:
@@ -276,49 +303,76 @@ def generateDataAccessorsFromStoredProcedure(controllerAccessMethodsFile, dataAc
         untypedParamsString = ''
         sqlParamsString = ''
         defaultValueParamsString = ''
-        routeParamsString = '/';
+        routeParamsString = '/'
         for sqlParameter in cur:
                 paramsList.append((sqlParameter[0], typeConverter[sqlParameter[1]]["type"], sqlParamToParamName(sqlParameter[0])))
-                untypedParamsString += ('TransactionID' if sqlParamToParamName(sqlParameter[0]) == 'transactionID' else sqlParamToParamName(sqlParameter[0])) + ', '
-                sqlParamsString += '\t\tnew SqlParameter(\"' + sqlParameter[0] + '\", ' + sqlParamToParamName(sqlParameter[0]) + '), \n'
-                paramsString += typeConverter[sqlParameter[1]]["type"] + ' ' + sqlParamToParamName(sqlParameter[0]) + ', '
-                if not sqlParamToParamName(sqlParameter[0]) == 'transactionID':
+                if not sqlParamToParamName(sqlParameter[0]) in skipFields:
+                    untypedParamsString += ('TransactionID' if sqlParamToParamName(sqlParameter[0]) == 'transactionID' else sqlParamToParamName(sqlParameter[0])) + ', '
+                aliasedSqlParam = (replacementFields[sqlParamToParamName(sqlParameter[0])] if sqlParamToParamName(sqlParameter[0]) in replacementFields.keys() else sqlParamToParamName(sqlParameter[0]))
+                sqlParamsString += '\t\tnew SqlParameter(\"' + sqlParameter[0] + '\", ' + aliasedSqlParam + '), \n'
+                if not sqlParamToParamName(sqlParameter[0]) in skipFields:
+                    paramsString += typeConverter[sqlParameter[1]]["type"] + ' ' + sqlParamToParamName(sqlParameter[0]) + ', '
+                if not sqlParamToParamName(sqlParameter[0]) in skipFields:
                     paramsStringSansTransaction += typeConverter[sqlParameter[1]]["type"] + ' ' + sqlParamToParamName(sqlParameter[0]) + ', '
                     defaultValueParamsString += '\t' + typeConverter[sqlParameter[1]]["type"] + ' ' + sqlParamToParamName(sqlParameter[0]) + ' = ' + typeConverter[sqlParameter[1]]["default"] + ';\n'
                     routeParamsString += '{' + sqlParamToParamName(sqlParameter[0])
                     if sqlParamToParamName(sqlParameter[0])[-2:] == 'ID':
                         routeParamsString += ':id'
                     routeParamsString += '}/'
-                
-        paramsString = paramsString.rstrip(', ')
-        paramsStringSansTransaction = paramsStringSansTransaction.rstrip(', ')
-        untypedParamsString = untypedParamsString.rstrip(', ')
-        sqlParamsString = sqlParamsString.rstrip(', \n')
-        routeParamsString = routeParamsString.rstrip('/')
-        dataAccessMethodsFile.write(getXMLComment(procName, 'Get') +
-              'internal static ' + ('DataTable' if sqlProcedureNameIsPlural(procName, procPluralExceptions) else 'JObject') + ' ' + procName + '(' + paramsString + ')' + ' \n{\n'
-              + '\treturn ' + ('Utility.DataTableRowToObject(' if not sqlProcedureNameIsPlural(procName, procPluralExceptions) else '') + 'DataAccess.GetDataTable(\"' + procName
-              + '\"'
-              + (', new SqlParameter[] {\n' if len(sqlParamsString) != 0 else '')
-              + sqlParamsString
-              + ('\n\t}' if len(sqlParamsString) != 0 else '')
-              + ')' 
-              + (')' if not sqlProcedureNameIsPlural(procName, procPluralExceptions) else '') + ';\n'
-              + '}\n\n')
+
+        paramsString = paramsString.rstrip(commaDelim)
+        # paramsString = insertParamNewLines(paramsString)
+        paramsStringSansTransaction = paramsStringSansTransaction.rstrip(commaDelim)
+        # paramsStringSansTransaction = insertParamNewLines(paramsStringSansTransaction)
+        untypedParamsString = untypedParamsString.rstrip(commaDelim)
+        sqlParamsString = sqlParamsString.rstrip(commaNewLineDelim)
+        routeParamsString = routeParamsString.rstrip(slashDelim)
+
+        actionTemplate = ''
+        if action.lower() == 'get':
+            actionTemplate = 'DataTable' if sqlProcedureNameIsPlural(procName, procPluralExceptions) else 'JObject'
+        elif action.lower() == 'set':
+            actionTemplate = 'void'
+
+        conversionTemplateBegin = ''
+        conversionTemplateEnd = ''
+        if action.lower() == 'get':
+            conversionTemplateBegin = ('Utility.DataTableRowToObject(' if not sqlProcedureNameIsPlural(procName, procPluralExceptions) else '')
+            conversionTemplateEnd = (')' if not sqlProcedureNameIsPlural(procName, procPluralExceptions) else '')
+
+        actionMethodName = ''
+        if action.lower() == 'get':
+            actionMethodName = 'GetDataTable'
+        elif action.lower() == 'set':
+            actionMethodName = 'SetData'
+
+        namespaceTemplate = ''
+        if action.lower() == 'get':
+            namespaceTemplate = 'Models.' + ('Transaction' if 'transaction' in procName.lower() else 'ReferentialData') + '.'
+        else:
+            namespaceTemplate = 'Models.Unknown.'
+
+        paramsTemplate = (commaDelim + 'new SqlParameter[] {\n' if len(sqlParamsString) != 0 else '') + sqlParamsString + ('\n\t}' if len(sqlParamsString) != 0 else '')
+        
+        dataAccessMethodsFile.write(getXMLComment(procName, action) +
+              'internal static ' + actionTemplate + ' ' + procName + '(' + paramsString + ')' + ' \n{\n'
+              + '\t' + ('return ' if action.lower() == 'get' else '') + conversionTemplateBegin + 'DataAccess.' + actionMethodName + '(\"' + procName
+              + '\"' + paramsTemplate + ')' + conversionTemplateEnd + ';\n' + '}\n\n')
         controllerAccessMethodsFile.write(getXMLComment(procName, 'Get')
               + '[Route(\"' + parseRouteName(procName) + routeParamsString + '\")]\n'
-              + 'public '+ ('DataTable' if sqlProcedureNameIsPlural(procName, procPluralExceptions) else 'JObject') + ' ' + procName + '(' + paramsStringSansTransaction + ')\n'
+              + 'public ' + actionTemplate + ' ' + procName + '(' + paramsStringSansTransaction + ')\n'
               + '{\n'
-              + '\treturn ' + 'Models.' + ('Transaction' if 'transaction' in procName.lower() else 'ReferentialData') + '.' + procName + '(' + untypedParamsString + ')' + ';\n'
+              + '\treturn ' + namespaceTemplate + procName + '(' + untypedParamsString + ')' + ';\n'
               + '}\n\n')
 def main():
     with open('../../controllerMethodsFile.cs', 'w') as controllerAccessMethodsFile:
         with open('../../dataAccessMethodsFile.cs', 'w') as dataAccessMethodsFile:
             with open('../../sqlStatementFile.sql', 'w') as sqlStatementFile:
                 with pymssql.connect(host='tst25sqldbv04.test.lab.americancapital.com', database='DealSpanDEV') as connection:
+                        setProcs(connection)
                         # getProcs(connection)
-                        getTablesStartingWith(connection, "Transaction")
-                        # generateDataAccessorsFromStoredProcedure(controllerAccessMethodsFile, dataAccessMethodsFile, connection)
-                        generateDataSettersFromTableDefinitions(controllerAccessMethodsFile, dataAccessMethodsFile, sqlStatementFile, connection)
+                        # getTablesStartingWith(connection, "Transaction")
+                        generateDataAccessorsFromStoredProcedure(controllerAccessMethodsFile, dataAccessMethodsFile, 'set', connection)
+                        # generateDataSettersFromTableDefinitions(controllerAccessMethodsFile, dataAccessMethodsFile, sqlStatementFile, connection)
 
 main()
