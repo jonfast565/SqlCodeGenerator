@@ -1,6 +1,7 @@
 # Details: Proc and data access method text generator for Dealspan referential data
 # Author: Jon Fast
-# Last Modified: 9/29/2014
+# Last Modified: 10/4/2014
+
 import re
 import pymssql
 
@@ -299,11 +300,11 @@ def createDataSettersForTableType(dataAccessMethodsFile, controllerAccessMethods
               'internal static void Set' + tableName + '(DataTable ' + camelCaseTableName + 'Table)' + ' \n{\n'
               + '\tDataAccess.SetData(' + quote('Set' + tableName)
               + ', new SqlParameter[] {\n'
-              + '\t\t new SqlParameter(' + camelCaseTableName + 'Table)'
+              + '\t\t new SqlParameter' + parenthesize(camelCaseTableName + 'Table')
               + '\n\t}' + ')' + ';\n' + '}\n\n')
     
     controllerAccessMethodsFile.write(getXMLComment(tableName, 'Set')
-              + '[Route(' + quote(tableName) + ')]\n'
+              + '[Route' + parenthesize(quote(tableName)) + ']\n'
               + 'public PostResult Put' + tableName + '([FromBody] DataTable ' + camelCaseTableName + 'Table)\n'
               + '{\n'
               + '\tModels.Unknown.Set' + tableName + '(' + camelCaseTableName + 'Table)\n'
