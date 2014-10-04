@@ -20,10 +20,14 @@ procPluralExceptions = [
         "TransactionStatusHistory"
     ]
 
-additionalJoinColumns = ['TransactionID', 'TransactionSecurityID', 'SecurityFacilityID']
+additionalJoinColumns = [
+    'TransactionID',
+    'TransactionSecurityID',
+    'SecurityFacilityID']
 skipUpdateColumns = ['CreatedBy', 'CreatedDatetime']
 skipFields = ['username']
-replacementFields = { 'username' : 'DealSpan.Security.GetUsername()'}
+replacementFields = { 'username' : 'DealSpan.Security.GetUsername()' }
+replacementParameters = { 'transactionID' : 'TransactionID' }
 
 typeConverter = { 'nvarchar' : {'type' : 'string', 'default' : '\"\"' },
                    'varchar' : { 'type' : 'string', 'default' : '\"\"' },
@@ -42,7 +46,7 @@ def getXMLComment(title, does):
     return '/// <summary>\n/// ' + does + 's ' + title + '\n/// </summary>' + ('\n/// <returns>' + title + '</returns>' if does.lower() == 'get' else '') + '\n'
 
 def camelCase(variable):
-    return variable[0].lower() + parameter[1:]
+    return variable[0].lower() + variable[1:]
 
 def sqlParamToParamName(parameter):
     # remove @ symbol and lower case the first character
@@ -196,6 +200,7 @@ def createTableType(sqlStatementFile, tableName, tableCols, tableConstraints, co
     sqlStatementFile.write("\n)\ngo\n\n")
 
 def createMergeStatementOnTableType(sqlStatementFile, tableName, tableCols, tableConstraints, connection):
+
     sourceTableAlias = 'source'
     sourceTableVariableName = '@' + sourceTableAlias[0].upper() + sourceTableAlias[1:] + "Table"
     tableTypeName = tableName + "Table"
@@ -218,6 +223,7 @@ def createMergeStatementOnTableType(sqlStatementFile, tableName, tableCols, tabl
     firstColumn = True
 
     identityColumnName = getIdentityColumn(tableName, connection)
+    
     if len(tableConstraints) == 0:
         mergeString = '-- Merge statement could not be written for ' + tableName \
                       + ' as it\n-- contains no primary key columns for comparison in the \'on\' statement. \n'
@@ -273,7 +279,7 @@ def createMergeStatementOnTableType(sqlStatementFile, tableName, tableCols, tabl
 # ACAS functionality only
 def createDataSettersForTableType(dataAccessMethodsFile, controllerAccessMethodsFile, tableName, tableCols, tableConstraints, connection):
 
-    camelCaseTableName = tableName[0].lower() + tableName[1:]
+    camelCaseTableName = camelCase(tableName)
 
     dataAccessMethodsFile.write(getXMLComment(tableName, 'Set') +
               'internal static void Set' + tableName + '(DataTable ' + camelCaseTableName + 'Table)' + ' \n{\n'
@@ -319,45 +325,74 @@ def insertParamNewLines(paramsString, count = 2, tabs = 4):
             if counter % count == 0:
                 newLinedParamString += '\n'
     return newLinedParamString.rstrip(commaDelim)
+        
+def getProcParameters(procName, connection):
+    cur = connection.cursor()
+    queryString = "select PARAMETER_NAME, DATA_TYPE \n" \
+                + "from INFORMATION_SCHEMA.PARAMETERS \n" \
+                + "where SPECIFIC_SCHEMA = 'dbo' \n" \
+                + "and PARAMETER_MODE = 'IN' \n" \
+                + "and SPECIFIC_NAME = '" + procName + "'\n"
+    cur.execute(queryString)
+    return cur
+
+def generateCLRUntypedParameterList(clrParameterNames):
+    untypedParamsString = ''
+    for clrParameterName in clrParameterNames:
+        if not clrParameterName in skipFields:
+            untypedParamsString += ('TransactionID' if clrParameterName == 'transactionID' else clrParameterName + commaDelim)
+    return untypedParamsString.rstrip(commaDelim)
+
+def generateCLRTypedParameterList(clrParameterNames, clrParameterTypes):
+    clrParamsString = ''
+    for clrParameterName, clrParameterType in zip(clrParameterNames, clrParameterTypes):
+        if not clrParameterName in skipFields:
+            clrParamsString += clrParameterType + ' ' + clrParameterName + commaDelim
+    return clrParamsString.rstrip(commaDelim)
+            
+def generateCLRTypedDefaultParameterAssignments(clrParameterNames, clrParameterTypes, clrParameterDefaults):
+    defaultValueParamsString = ''
+    for clrParameterName, clrParameterType in zip(clrParameterNames, clrParameterTypes, clrParameterDefaults):
+        if not sqlParamToParamName(sqlParameter[0]) in skipFields:
+            defaultValueParamsString += '\t' + clrParameterType + ' ' + clrParameterName + ' = ' + clrParameterDefault + ';\n'
+    return defaultValueParamsString
+
+def generateCLRSqlParameterObjectList(sqlParameterNames, clrParameterNames):
+    clrParamsString = ''
+    for sqlParameter, clrParameter in zip(sqlParameterNames, clrParameterNames):
+        replacementCLRParameter = (replacementFields[clrParameter] if clrParameter in replacementFields.keys() else clrParameter)
+        clrParamsString += '\t\t' + 'new SqlParameter(\"' + sqlParameter + '\"' + commaDelim + clrParameter + ')' + commaNewLineDelim
+    return clrParamsString.rstrip(commaDelim)
+
+def generateCLRWebAPIRoute(clrParameterNames):
+    routeParamsString = '/'
+    for clrParameter in clrParameterNames:
+        if not sqlParamToParamName(sqlParameter[0]) in skipFields:
+            routeParamsString += '{' + clrParameter
+            if clrParameter[-2:] == 'ID':
+                routeParamsString += ':id'
+            routeParamsString += '}/'
+    return routeParamsString.rstrip(slashDelim)
 
 # ACAS functionality only
 def generateDataAccessorsFromStoredProcedure(controllerAccessMethodsFile, dataAccessMethodsFile, action, connection):
     dataAccessMethodsFile.write('\n')
     controllerAccessMethodsFile.write('\n')
-    for procName in procNames:
-        cur = connection.cursor()
-        queryString = "select PARAMETER_NAME, DATA_TYPE \n" \
-                    + "from INFORMATION_SCHEMA.PARAMETERS \n" \
-                    + "where SPECIFIC_SCHEMA = 'dbo' \n" \
-                    + "and PARAMETER_MODE = 'IN' \n" \
-                    + "and SPECIFIC_NAME = '" + procName + "'\n"
-        cur.execute(queryString)
-        paramsList = []
-        paramsString = ''
-        paramsStringSansTransaction = ''
-        untypedParamsString = ''
-        sqlParamsString = ''
-        defaultValueParamsString = ''
-        routeParamsString = '/'
-        for sqlParameter in cur:
-                paramsList.append((sqlParameter[0], typeConverter[sqlParameter[1]]["type"], sqlParamToParamName(sqlParameter[0])))    
-                aliasedSqlParam = (replacementFields[sqlParamToParamName(sqlParameter[0])] if sqlParamToParamName(sqlParameter[0]) in replacementFields.keys() else sqlParamToParamName(sqlParameter[0]))
-                sqlParamsString += '\t\tnew SqlParameter(\"' + sqlParameter[0] + '\", ' + aliasedSqlParam + '), \n'
-                if not sqlParamToParamName(sqlParameter[0]) in skipFields:
-                    untypedParamsString += ('TransactionID' if sqlParamToParamName(sqlParameter[0]) == 'transactionID' else sqlParamToParamName(sqlParameter[0])) + ', '
-                    paramsString += typeConverter[sqlParameter[1]]["type"] + ' ' + sqlParamToParamName(sqlParameter[0]) + ', '
-                    paramsStringSansTransaction += typeConverter[sqlParameter[1]]["type"] + ' ' + sqlParamToParamName(sqlParameter[0]) + ', '
-                    defaultValueParamsString += '\t' + typeConverter[sqlParameter[1]]["type"] + ' ' + sqlParamToParamName(sqlParameter[0]) + ' = ' + typeConverter[sqlParameter[1]]["default"] + ';\n'
-                    routeParamsString += '{' + sqlParamToParamName(sqlParameter[0])
-                    if sqlParamToParamName(sqlParameter[0])[-2:] == 'ID':
-                        routeParamsString += ':id'
-                    routeParamsString += '}/'
 
-        paramsString = paramsString.rstrip(commaDelim)
-        paramsStringSansTransaction = paramsStringSansTransaction.rstrip(commaDelim)
-        untypedParamsString = untypedParamsString.rstrip(commaDelim)
-        sqlParamsString = sqlParamsString.rstrip(commaNewLineDelim)
-        routeParamsString = routeParamsString.rstrip(slashDelim)
+    for procName in procNames: 
+        cur = getProcParameters(procName, connection)
+        
+        sqlParameterNames = map((lambda row : row[0]), cur)
+        sqlParameterTypes = map((lambda row : row[1]), cur)
+        clrParameterNames = map((lambda row : sqlParamToParamName(row[0])), cur)
+        clrParameterTypes = map((lambda row : typeConverter[row[1]]["type"]), cur)
+        clrParameterDefaults = map((lambda row : typeConverter[row[1]]["default"]), cur)
+        
+        paramsString = generateCLRTypedParameterList(clrParameterNames, clrParameterTypes)
+        untypedParamsString = generateCLRUntypedParameterList(clrParameterNames)
+        sqlParamsString = generateCLRSqlParameterObjectList(sqlParameterNames, clrParameterNames)
+        defaultValueParamsString = generateCLRTypedDefaultParameterAssignments(clrParameterNames, clrParameterTypes, clrParameterDefaults)
+        routeParamsString = generateCLRWebAPIRoute(clrParameterNames)
 
         actionTemplate = ''
         if action.lower() == 'get':
@@ -391,19 +426,20 @@ def generateDataAccessorsFromStoredProcedure(controllerAccessMethodsFile, dataAc
               + '\"' + paramsTemplate + ')' + conversionTemplateEnd + ';\n' + '}\n\n')
         controllerAccessMethodsFile.write(getXMLComment(procName, 'Get')
               + '[Route(\"' + parseRouteName(procName) + routeParamsString + '\")]\n'
-              + 'public ' + actionTemplate + ' ' + procName + '(' + paramsStringSansTransaction + ')\n'
+              + 'public ' + actionTemplate + ' ' + procName + '(' + paramsString + ')\n'
               + '{\n'
               + '\treturn ' + namespaceTemplate + procName + '(' + untypedParamsString + ')' + ';\n'
               + '}\n\n')
+                                   
 def main():
     with open('../../controllerMethodsFile.cs', 'w') as controllerAccessMethodsFile:
         with open('../../dataAccessMethodsFile.cs', 'w') as dataAccessMethodsFile:
             with open('../../sqlStatementFile.sql', 'w') as sqlStatementFile:
                 with pymssql.connect(host='tst25sqldbv04.test.lab.americancapital.com', database='DealSpanDEV') as connection:
                         setProcs(connection)
-                        # getProcs(connection)
+                        getProcs(connection)
                         getTablesStartingWith(connection, "Transaction")
-                        # generateDataAccessorsFromStoredProcedure(controllerAccessMethodsFile, dataAccessMethodsFile, 'set', connection)
+                        generateDataAccessorsFromStoredProcedure(controllerAccessMethodsFile, dataAccessMethodsFile, 'set', connection)
                         generateDataSettersFromTableDefinitions(controllerAccessMethodsFile, dataAccessMethodsFile, sqlStatementFile, connection)
 
 main()
