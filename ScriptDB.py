@@ -23,7 +23,9 @@ procPluralExceptions = [
 additionalJoinColumns = [
     'TransactionID',
     'TransactionSecurityID',
-    'SecurityFacilityID']
+    'SecurityFacilityID'
+    ]
+
 skipUpdateColumns = ['CreatedBy', 'CreatedDatetime']
 skipFields = ['username']
 replacementFields = { 'username' : 'DealSpan.Security.GetUsername()' }
@@ -44,6 +46,18 @@ typeConverter = { 'nvarchar' : {'type' : 'string', 'default' : '\"\"' },
 def getXMLComment(title, does):
     title = re.sub(r"(\w)([A-Z])", r"\1 \2", title).lower()
     return '/// <summary>\n/// ' + does + 's ' + title + '\n/// </summary>' + ('\n/// <returns>' + title + '</returns>' if does.lower() == 'get' else '') + '\n'
+
+def quote(variable):
+    return '\"' + variable + '\"'
+
+def parenthesize(variable):
+    return '(' + variable + ')'
+
+def bracket(variable):
+    return '{' + variable + '}'
+
+def squareBracket(variable):
+    return '[' + variable + ']'
 
 def camelCase(variable):
     return variable[0].lower() + variable[1:]
@@ -190,10 +204,9 @@ def createColumnDefinition(col, tableName, tableConstraints, connection):
 
 def createTableType(sqlStatementFile, tableName, tableCols, tableConstraints, connection):
     paramsString = ''
-    paramDelimiter = ", \n"
     for col in tableCols:
-        paramsString += "\t" + createColumnDefinition(col, tableName, tableConstraints, connection) + paramDelimiter
-    paramsString = paramsString.rstrip(paramDelimiter)
+        paramsString += "\t" + createColumnDefinition(col, tableName, tableConstraints, connection) + commaNewLineDelim
+    paramsString = paramsString.rstrip(commaNewLineDelim)
     sqlStatementFile.write('\n-- Table type for: ' + tableName + '\n')
     sqlStatementFile.write("create type " + tableName + "Table" + " as table (\n")
     sqlStatementFile.write(paramsString)
@@ -206,7 +219,8 @@ def createMergeStatementOnTableType(sqlStatementFile, tableName, tableCols, tabl
     tableTypeName = tableName + "Table"
     targetTableAlias = 'target'
 
-    tableColNames = map((lambda row : row[0]), tableCols)
+    tableColNames = list(map((lambda row : row[0]), tableCols))
+    tableConstraintNames = list(map((lambda row : row[1]), tableConstraints))
 
     mergeString = ''
     mergeString += '\n-- Merge statement for: ' + tableName + '\n'
@@ -230,15 +244,15 @@ def createMergeStatementOnTableType(sqlStatementFile, tableName, tableCols, tabl
         sqlStatementFile.write(mergeString)
         return
     else:
-        for pkey in tableConstraints:
+        for tableConstraint in tableConstraintNames:
             if firstColumn == True:
                 joinColumnString += "\t\ton "
                 firstColumn = False
             else:
                 joinColumnString += "\t\tand "
-            joinColumnString += sourceTableAlias + "." + pkey[1] + " = " + targetTableAlias + "." + pkey[1] + '\n'
+            joinColumnString += sourceTableAlias + "." + tableConstraint + " = " + targetTableAlias + "." + tableConstraint + '\n'
         for joinCol in additionalJoinColumns:
-            if joinCol in tableColNames:
+            if joinCol in tableColNames and joinCol not in tableConstraintNames:
                 if firstColumn == True:
                     joinColumnString += "\t\ton "
                     firstColumn = False
@@ -264,11 +278,11 @@ def createMergeStatementOnTableType(sqlStatementFile, tableName, tableCols, tabl
     insertSourceCols = '';
     for targetCol in tableCols:
         if targetCol[0] != identityColumnName:
-            insertCols += "\t\t\t" + targetCol[0] + ", \n"
-            insertSourceCols += "\t\t\t" + sourceTableAlias + "." + targetCol[0] + ", \n"
+            insertCols += "\t\t\t" + targetCol[0] + commaNewLineDelim
+            insertSourceCols += "\t\t\t" + sourceTableAlias + "." + targetCol[0] + commaNewLineDelim
 
-    insertCols = insertCols.rstrip(", \n")
-    insertSourceCols = insertSourceCols.rstrip(", \n")
+    insertCols = insertCols.rstrip(commaNewLineDelim)
+    insertSourceCols = insertSourceCols.rstrip(commaNewLineDelim)
 
     mergeString += "\t\tinsert \n\t\t(\n" + insertCols + "\n\t\t)\n\t\tvalues\n\t\t(\n" + insertSourceCols + "\n\t\t)\n"
     mergeString += "\twhen not matched by source then delete;\n"
@@ -283,13 +297,13 @@ def createDataSettersForTableType(dataAccessMethodsFile, controllerAccessMethods
 
     dataAccessMethodsFile.write(getXMLComment(tableName, 'Set') +
               'internal static void Set' + tableName + '(DataTable ' + camelCaseTableName + 'Table)' + ' \n{\n'
-              + '\tDataAccess.SetData(\"' + 'Set' + tableName + '\"'
+              + '\tDataAccess.SetData(' + quote('Set' + tableName)
               + ', new SqlParameter[] {\n'
               + '\t\t new SqlParameter(' + camelCaseTableName + 'Table)'
               + '\n\t}' + ')' + ';\n' + '}\n\n')
     
     controllerAccessMethodsFile.write(getXMLComment(tableName, 'Set')
-              + '[Route(\"' + tableName + '\")]\n'
+              + '[Route(' + quote(tableName) + ')]\n'
               + 'public PostResult Put' + tableName + '([FromBody] DataTable ' + camelCaseTableName + 'Table)\n'
               + '{\n'
               + '\tModels.Unknown.Set' + tableName + '(' + camelCaseTableName + 'Table)\n'
@@ -353,82 +367,82 @@ def generateCLRTypedParameterList(clrParameterNames, clrParameterTypes):
 def generateCLRTypedDefaultParameterAssignments(clrParameterNames, clrParameterTypes, clrParameterDefaults):
     defaultValueParamsString = ''
     for clrParameterName, clrParameterType in zip(clrParameterNames, clrParameterTypes, clrParameterDefaults):
-        if not sqlParamToParamName(sqlParameter[0]) in skipFields:
+        if not clrParameterName in skipFields:
             defaultValueParamsString += '\t' + clrParameterType + ' ' + clrParameterName + ' = ' + clrParameterDefault + ';\n'
     return defaultValueParamsString
 
 def generateCLRSqlParameterObjectList(sqlParameterNames, clrParameterNames):
     clrParamsString = ''
     for sqlParameter, clrParameter in zip(sqlParameterNames, clrParameterNames):
-        replacementCLRParameter = (replacementFields[clrParameter] if clrParameter in replacementFields.keys() else clrParameter)
-        clrParamsString += '\t\t' + 'new SqlParameter(\"' + sqlParameter + '\"' + commaDelim + clrParameter + ')' + commaNewLineDelim
+        replacementCLRParameter = (replacementFields[clrParameter] if clrParameter in list(replacementFields.keys()) else clrParameter)
+        clrParamsString += '\t\t' + 'new SqlParameter' + parenthesize(quote(sqlParameter) + commaDelim + clrParameter) + commaNewLineDelim
     return clrParamsString.rstrip(commaDelim)
 
 def generateCLRWebAPIRoute(clrParameterNames):
     routeParamsString = '/'
     for clrParameter in clrParameterNames:
-        if not sqlParamToParamName(sqlParameter[0]) in skipFields:
-            routeParamsString += '{' + clrParameter
-            if clrParameter[-2:] == 'ID':
-                routeParamsString += ':id'
-            routeParamsString += '}/'
+        if not clrParameter in skipFields:
+            routeParamsString += bracket(clrParameter + (':id' if clrParameter[-2:] == 'ID' else '')) + '/'
     return routeParamsString.rstrip(slashDelim)
 
 # ACAS functionality only
-def generateDataAccessorsFromStoredProcedure(controllerAccessMethodsFile, dataAccessMethodsFile, action, connection):
+def generateDataAccessorsFromStoredProcedure(controllerAccessMethodsFile, dataAccessMethodsFile, connection):
     dataAccessMethodsFile.write('\n')
     controllerAccessMethodsFile.write('\n')
 
-    for procName in procNames: 
-        cur = getProcParameters(procName, connection)
+    for procName in procNames:
         
-        sqlParameterNames = map((lambda row : row[0]), cur)
-        sqlParameterTypes = map((lambda row : row[1]), cur)
-        clrParameterNames = map((lambda row : sqlParamToParamName(row[0])), cur)
-        clrParameterTypes = map((lambda row : typeConverter[row[1]]["type"]), cur)
-        clrParameterDefaults = map((lambda row : typeConverter[row[1]]["default"]), cur)
+        cur = getProcParameters(procName, connection)
+        rows = []
+        for row in cur:
+            rows.append((row[0], row[1]))
+        
+        sqlParameterNames = list(map((lambda row : row[0]), rows))
+        sqlParameterTypes = list(map((lambda row : row[1]), rows))
+        clrParameterNames = list(map((lambda row : sqlParamToParamName(row[0])), rows))
+        clrParameterTypes = list(map((lambda row : typeConverter[row[1]]["type"]), rows))
+        clrParameterDefaults = list(map((lambda row : typeConverter[row[1]]["default"]), rows))
         
         paramsString = generateCLRTypedParameterList(clrParameterNames, clrParameterTypes)
         untypedParamsString = generateCLRUntypedParameterList(clrParameterNames)
         sqlParamsString = generateCLRSqlParameterObjectList(sqlParameterNames, clrParameterNames)
-        defaultValueParamsString = generateCLRTypedDefaultParameterAssignments(clrParameterNames, clrParameterTypes, clrParameterDefaults)
         routeParamsString = generateCLRWebAPIRoute(clrParameterNames)
 
         actionTemplate = ''
-        if action.lower() == 'get':
+        if procName[:3].lower() == 'get':
             actionTemplate = 'DataTable' if sqlProcedureNameIsPlural(procName, procPluralExceptions) else 'JObject'
-        elif action.lower() == 'set':
+        elif procName[:3].lower() == 'set':
             actionTemplate = 'void'
 
         conversionTemplateBegin = ''
         conversionTemplateEnd = ''
-        if action.lower() == 'get':
+        if procName[:3].lower() == 'get':
             conversionTemplateBegin = ('Utility.DataTableRowToObject(' if not sqlProcedureNameIsPlural(procName, procPluralExceptions) else '')
             conversionTemplateEnd = (')' if not sqlProcedureNameIsPlural(procName, procPluralExceptions) else '')
 
         actionMethodName = ''
-        if action.lower() == 'get':
+        if procName[:3].lower() == 'get':
             actionMethodName = 'GetDataTable'
-        elif action.lower() == 'set':
+        elif procName[:3].lower() == 'set':
             actionMethodName = 'SetData'
 
         namespaceTemplate = ''
-        if action.lower() == 'get':
+        if procName[:3].lower() == 'get':
             namespaceTemplate = 'Models.' + ('Transaction' if 'transaction' in procName.lower() else 'ReferentialData') + '.'
         else:
             namespaceTemplate = 'Models.Unknown.'
 
         paramsTemplate = (commaDelim + 'new SqlParameter[] {\n' if len(sqlParamsString) != 0 else '') + sqlParamsString + ('\n\t}' if len(sqlParamsString) != 0 else '')
         
-        dataAccessMethodsFile.write(getXMLComment(procName, action) +
-              'internal static ' + actionTemplate + ' ' + sqlSetToPutMethodName(procName) + '(' + paramsString + ')' + ' \n{\n'
-              + '\t' + ('return ' if action.lower() == 'get' else '') + conversionTemplateBegin + 'DataAccess.' + actionMethodName + '(\"' + procName
-              + '\"' + paramsTemplate + ')' + conversionTemplateEnd + ';\n' + '}\n\n')
-        controllerAccessMethodsFile.write(getXMLComment(procName, 'Get')
-              + '[Route(\"' + parseRouteName(procName) + routeParamsString + '\")]\n'
-              + 'public ' + actionTemplate + ' ' + procName + '(' + paramsString + ')\n'
+        dataAccessMethodsFile.write(getXMLComment(procName, procName[:3].lower()) +
+              'internal static ' + actionTemplate + ' ' + sqlSetToPutMethodName(procName) + parenthesize(paramsString) + ' \n{\n'
+              + '\t' + ('return ' if procName[:3].lower() == 'get' else '') + conversionTemplateBegin + 'DataAccess.' + actionMethodName + '(' + quote(procName)
+              + paramsTemplate + ')' + conversionTemplateEnd + ';\n' + '}\n\n')
+        controllerAccessMethodsFile.write(getXMLComment(procName, procName[:3].lower())
+              + '[' + 'Route' + parenthesize(quote(parseRouteName(procName) + routeParamsString)) + ']' + '\n'
+              + 'public ' + actionTemplate + ' ' + procName + parenthesize(paramsString) + '\n'
               + '{\n'
-              + '\treturn ' + namespaceTemplate + procName + '(' + untypedParamsString + ')' + ';\n'
+              + '\treturn ' + namespaceTemplate + procName + parenthesize(untypedParamsString) + ';\n'
               + '}\n\n')
                                    
 def main():
@@ -439,7 +453,7 @@ def main():
                         setProcs(connection)
                         getProcs(connection)
                         getTablesStartingWith(connection, "Transaction")
-                        generateDataAccessorsFromStoredProcedure(controllerAccessMethodsFile, dataAccessMethodsFile, 'set', connection)
+                        generateDataAccessorsFromStoredProcedure(controllerAccessMethodsFile, dataAccessMethodsFile, connection)
                         generateDataSettersFromTableDefinitions(controllerAccessMethodsFile, dataAccessMethodsFile, sqlStatementFile, connection)
 
 main()
