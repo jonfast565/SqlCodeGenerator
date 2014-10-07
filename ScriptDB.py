@@ -8,6 +8,7 @@ import pymssql
 # common delimiters
 commaDelim = ', '
 commaNewLineDelim = ', \n'
+semiColonNewLineDelim = ';\n'
 slashDelim = '/'
 
 # DealSpan proc names (imported from database)
@@ -63,6 +64,9 @@ def squareBracket(variable):
 def camelCase(variable):
     return variable[0].lower() + variable[1:]
 
+def capitalize(variable):
+    return variable[0].upper() + variable[1:]
+
 def sqlParamToParamName(parameter):
     # remove @ symbol and lower case the first character
     return camelCase(parameter[1:])
@@ -83,6 +87,13 @@ def sqlSetToPutMethodName(procName):
         return "Put" + procName[3:]
     else:
         return procName
+
+def genericProcName(procName):
+    return procName[3:]
+
+def procJObjectName(procName):
+    objectName = procName[3:] + 'Object'
+    return objectName[0].lower() + objectName[1:]
 
 def setProcs(connection):
     cur = connection.cursor()
@@ -379,6 +390,24 @@ def generateCLRSqlParameterObjectList(sqlParameterNames, clrParameterNames):
         clrParamsString += '\t\t' + 'new SqlParameter' + parenthesize(quote(sqlParameter) + commaDelim + clrParameter) + commaNewLineDelim
     return clrParamsString.rstrip(commaDelim)
 
+def addConverter(clrParameterType, nullable = True):
+    return '.ToObject<' + clrParameterType + ('?' if nullable == True and clrParameterType.lower() != "string" else '') + '>()'
+
+def createCLRTypeDefinition(clrParameterName, clrParameterType, nullable = True):
+    return clrParameterType + ('?' if nullable == True and clrParameterType.lower() != "string" else '') + ' ' + clrParameterName
+
+def generateJObjectGetterParameterList(procName, clrParameterNames, clrParameterTypes):
+    paramsString = ''
+    for clrParameterName, clrParameterType in zip(clrParameterNames, clrParameterTypes):
+        paramsString += '\t\t' + procJObjectName(procName) + squareBracket(quote(clrParameterName)) + addConverter(clrParameterType) + commaNewLineDelim
+    return paramsString.rstrip(commaNewLineDelim)
+
+def generateJObjectGetterDefaultsList(procName, clrParameterNames, clrParameterTypes):
+    paramsString = ''
+    for clrParameterName, clrParameterType in zip(clrParameterNames, clrParameterTypes):
+        paramsString += '\t' + createCLRTypeDefinition(clrParameterName, clrParameterType) + ' = ' + procJObjectName(procName) + squareBracket(quote(clrParameterName)) + addConverter(clrParameterType) + semiColonNewLineDelim
+    return paramsString.rstrip(commaNewLineDelim)
+
 def generateCLRWebAPIRoute(clrParameterNames):
     routeParamsString = '/'
     for clrParameter in clrParameterNames:
@@ -408,43 +437,56 @@ def generateDataAccessorsFromStoredProcedure(controllerAccessMethodsFile, dataAc
         untypedParamsString = generateCLRUntypedParameterList(clrParameterNames)
         sqlParamsString = generateCLRSqlParameterObjectList(sqlParameterNames, clrParameterNames)
         routeParamsString = generateCLRWebAPIRoute(clrParameterNames)
+        jObjectParameterString = generateJObjectGetterParameterList(procName, clrParameterNames, clrParameterTypes)
+        jObjectDefaultsList = generateJObjectGetterDefaultsList(procName, clrParameterNames, clrParameterTypes)
+        
+        action = procName[:3].lower()
 
         actionTemplate = ''
-        if procName[:3].lower() == 'get':
+        if action == 'get':
             actionTemplate = 'DataTable' if sqlProcedureNameIsPlural(procName, procPluralExceptions) else 'JObject'
-        elif procName[:3].lower() == 'set':
+        elif action == 'set':
             actionTemplate = 'void'
 
         conversionTemplateBegin = ''
         conversionTemplateEnd = ''
-        if procName[:3].lower() == 'get':
+        if action == 'get':
             conversionTemplateBegin = ('Utility.DataTableRowToObject(' if not sqlProcedureNameIsPlural(procName, procPluralExceptions) else '')
             conversionTemplateEnd = (')' if not sqlProcedureNameIsPlural(procName, procPluralExceptions) else '')
 
         actionMethodName = ''
-        if procName[:3].lower() == 'get':
+        if action == 'get':
             actionMethodName = 'GetDataTable'
-        elif procName[:3].lower() == 'set':
+        elif action == 'set':
             actionMethodName = 'SetData'
 
         namespaceTemplate = ''
-        if procName[:3].lower() == 'get':
+        if action == 'get':
             namespaceTemplate = 'Models.' + ('Transaction' if 'transaction' in procName.lower() else 'ReferentialData') + '.'
         else:
             namespaceTemplate = 'Models.Unknown.'
 
         paramsTemplate = (commaDelim + 'new SqlParameter[] {\n' if len(sqlParamsString) != 0 else '') + sqlParamsString + ('\n\t}' if len(sqlParamsString) != 0 else '')
         
-        dataAccessMethodsFile.write(getXMLComment(procName, procName[:3].lower()) +
+        dataAccessMethodsFile.write(getXMLComment(procName, action) +
               'internal static ' + actionTemplate + ' ' + sqlSetToPutMethodName(procName) + parenthesize(paramsString) + ' \n{\n'
-              + '\t' + ('return ' if procName[:3].lower() == 'get' else '') + conversionTemplateBegin + 'DataAccess.' + actionMethodName + '(' + quote(procName)
+              + '\t' + ('return ' if action == 'get' else '') + conversionTemplateBegin + 'DataAccess.' + actionMethodName + '(' + quote(procName)
               + paramsTemplate + ')' + conversionTemplateEnd + ';\n' + '}\n\n')
-        controllerAccessMethodsFile.write(getXMLComment(procName, procName[:3].lower())
-              + '[' + 'Route' + parenthesize(quote(parseRouteName(procName) + routeParamsString)) + ']' + '\n'
-              + 'public ' + actionTemplate + ' ' + procName + parenthesize(paramsString) + '\n'
-              + '{\n'
-              + '\treturn ' + namespaceTemplate + procName + parenthesize(untypedParamsString) + ';\n'
-              + '}\n\n')
+
+        if action == 'get':
+            controllerAccessMethodsFile.write(getXMLComment(procName, action)
+                  + squareBracket('Route' + parenthesize(quote(parseRouteName(procName) + routeParamsString))) + '\n'
+                  + 'public ' + actionTemplate + ' ' + procName + parenthesize(paramsString) + '\n'
+                  + '{\n'
+                  + '\treturn ' + namespaceTemplate + procName + parenthesize(untypedParamsString) + ';\n'
+                  + '}\n\n')
+        else:
+            controllerAccessMethodsFile.write(getXMLComment(procName, action) \
+                                              + squareBracket('Route' + parenthesize(quote(procName))) + '\n' \
+                                              + 'public ' + actionTemplate + ' ' + sqlSetToPutMethodName(procName) + parenthesize('[FromBody] JObject ' + procJObjectName(procName)) + '\n'
+                                              + '{\n'
+                                              + '\treturn ' + 'Models.Transaction.' + procName + parenthesize('\n' + jObjectParameterString) + '\n'
+                                              + '}\n\n')
                                    
 def main():
     with open('../../controllerMethodsFile.cs', 'w') as controllerAccessMethodsFile:
