@@ -10,6 +10,8 @@ commaDelim = ', '
 commaNewLineDelim = ', \n'
 semiColonNewLineDelim = ';\n'
 slashDelim = '/'
+doubleTab = '\t\t'
+doubleTap = '\n\n'
 
 # DealSpan proc names (imported from database)
 tableNames = []
@@ -327,6 +329,30 @@ def createDataSetterDropStatements(sqlStatementFile, tableName):
     sqlStatementFile.write('drop procedure Set' + tableName + ';\n')
     sqlStatementFile.write('drop type ' + tableName + ';\n\n')
 
+def createInsertStatementOnTable(sqlStatementFile, tableName, tableCols):
+    sqlStatementFile.write("\n\n-- Inserts into table " + tableName + "\n")
+    insertString = 'insert into ' + tableName + ' (\n'
+    columnString = ''
+    for col in tableCols:
+        columnString += '\t\t' + col[0] + commaNewLineDelim
+    insertString += columnString.rstrip(commaNewLineDelim) + ')\nvalues (\n'
+    columnString = ''
+    for col in tableCols:
+        columnString += '\t\t' + col[0] + ': ' + col[1] + commaNewLineDelim
+    insertString += columnString.rstrip(commaNewLineDelim) + '\n)\n\n';
+    sqlStatementFile.write(insertString)
+
+def createUpdateStatementOnTable(sqlStatementFile, tableName, tableCols, tableConstraints):
+    sqlStatementFile.write("\n\n-- Updates table " + tableName + "\n")
+    updateString = 'update set ' + tableName + '\n'
+    columnString = ''
+    for col in tableCols:
+        columnString += '\t\t' + col[0] ' = ' + col[0] + ': ' + col[1] + commaNewLineDelim
+        
+
+def createDeleteStatementOnTable(sqlStatementFile, tableName, tableCols):
+    pass
+
 def generateDataSettersFromTableDefinitions(controllerAccessMethodsFile, dataAccessMethodsFile, sqlStatementFile, connection):
     dataAccessMethodsFile.write('\n')
     controllerAccessMethodsFile.write('\n')
@@ -336,6 +362,7 @@ def generateDataSettersFromTableDefinitions(controllerAccessMethodsFile, dataAcc
         primaryKeys = getTableConstraints(connection, tableName, 'primary key')
         foreignKeys = getTableConstraints(connection, tableName, 'foreign key')
         createTableType(sqlStatementFile, tableName, tableCols, primaryKeys, connection)
+        createInsertStatementOnTable(sqlStatementFile, tableName, tableCols)
         createMergeStatementOnTableType(sqlStatementFile, tableName, tableCols, primaryKeys, connection)
         createDataSetterDropStatements(sqlStatementFile, tableName)
         createDataSettersForTableType(dataAccessMethodsFile, controllerAccessMethodsFile, tableName, tableCols, primaryKeys, connection)
@@ -495,7 +522,7 @@ def main():
                 with pymssql.connect(host='tst25sqldbv04.test.lab.americancapital.com', database='DealSpanDEV') as connection:
                         setProcs(connection)
                         getProcs(connection)
-                        getTablesStartingWith(connection, "Transaction")
+                        getTables(connection)
                         generateDataAccessorsFromStoredProcedure(controllerAccessMethodsFile, dataAccessMethodsFile, connection)
                         generateDataSettersFromTableDefinitions(controllerAccessMethodsFile, dataAccessMethodsFile, sqlStatementFile, connection)
 
