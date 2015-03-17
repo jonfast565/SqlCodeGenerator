@@ -19,15 +19,15 @@ procNames = []
 
 # ACAS specific table names
 procPluralExceptions = [
-        "TransactionsLastUpdated",
-        "TransactionsRelated",
-        "TransactionStatusHistory"
+        #"TransactionsLastUpdated",
+        #"TransactionsRelated",
+        #"TransactionStatusHistory"
     ]
 
 additionalJoinColumns = [
-    'TransactionID',
-    'TransactionSecurityID',
-    'SecurityFacilityID'
+    #'TransactionID',
+    #'TransactionSecurityID',
+    #'SecurityFacilityID'
     ]
 
 skipUpdateColumns = ['CreatedBy', 'CreatedDatetime']
@@ -217,6 +217,7 @@ def createColumnDefinition(col, tableName, tableConstraints, connection):
     return col[0] + " " + col[1] + extendedTypeInformation.strip() + " " + isNullColumn
 
 def createTableType(sqlStatementFile, tableName, tableCols, tableConstraints, connection):
+    print('Creating table type for: ' + tableName)
     paramsString = ''
     for col in tableCols:
         paramsString += "\t" + createColumnDefinition(col, tableName, tableConstraints, connection) + commaNewLineDelim
@@ -227,7 +228,7 @@ def createTableType(sqlStatementFile, tableName, tableCols, tableConstraints, co
     sqlStatementFile.write("\n)\ngo\n\n")
 
 def createMergeStatementOnTableType(sqlStatementFile, tableName, tableCols, tableConstraints, connection):
-
+    print('Creating merge statement for: ' + tableName)
     sourceTableAlias = 'source'
     sourceTableVariableName = '@' + sourceTableAlias[0].upper() + sourceTableAlias[1:] + "Table"
     tableTypeName = tableName + "Table"
@@ -306,7 +307,7 @@ def createMergeStatementOnTableType(sqlStatementFile, tableName, tableCols, tabl
 
 # ACAS functionality only
 def createDataSettersForTableType(dataAccessMethodsFile, controllerAccessMethodsFile, tableName, tableCols, tableConstraints, connection):
-
+    print('Creating setters for: ' + tableName)
     camelCaseTableName = camelCase(tableName)
 
     dataAccessMethodsFile.write(getXMLComment(tableName, 'Set') +
@@ -325,11 +326,13 @@ def createDataSettersForTableType(dataAccessMethodsFile, controllerAccessMethods
               + '}\n\n')
 
 def createDataSetterDropStatements(sqlStatementFile, tableName):
+    print('Creating drop statements for: ' + tableName)
     sqlStatementFile.write('\n\n-- Drops the table type and stored procedure for ' + tableName + '\n')
     sqlStatementFile.write('drop procedure Set' + tableName + ';\n')
     sqlStatementFile.write('drop type ' + tableName + ';\n\n')
 
 def createInsertStatementOnTable(sqlStatementFile, tableName, tableCols):
+    print('Creating insert statements for: ' + tableName)
     sqlStatementFile.write("\n\n-- Inserts into table " + tableName + "\n")
     insertString = 'insert into ' + tableName + ' (\n'
     columnString = ''
@@ -343,17 +346,20 @@ def createInsertStatementOnTable(sqlStatementFile, tableName, tableCols):
     sqlStatementFile.write(insertString)
 
 def createUpdateStatementOnTable(sqlStatementFile, tableName, tableCols, tableConstraints):
+    print('Creating update statements for: ' + tableName)
     sqlStatementFile.write("\n\n-- Updates table " + tableName + "\n")
     updateString = 'update set ' + tableName + '\n'
     columnString = ''
     for col in tableCols:
-        columnString += '\t\t' + col[0] ' = ' + col[0] + ': ' + col[1] + commaNewLineDelim
+        columnString += '\t\t' + col[0] + ' = ' + col[0] + ': ' + col[1] + commaNewLineDelim
         
 
 def createDeleteStatementOnTable(sqlStatementFile, tableName, tableCols):
+    print('Creating delete statements for: ' + tableName)
     pass
 
-def generateDataSettersFromTableDefinitions(controllerAccessMethodsFile, dataAccessMethodsFile, sqlStatementFile, connection):
+def generateCLRDataSettersFromTableDefinitions(controllerAccessMethodsFile, dataAccessMethodsFile, sqlStatementFile, connection):
+    print('Generating setters.')
     dataAccessMethodsFile.write('\n')
     controllerAccessMethodsFile.write('\n')
     sqlStatementFile.write('\n')
@@ -362,9 +368,9 @@ def generateDataSettersFromTableDefinitions(controllerAccessMethodsFile, dataAcc
         primaryKeys = getTableConstraints(connection, tableName, 'primary key')
         foreignKeys = getTableConstraints(connection, tableName, 'foreign key')
         createTableType(sqlStatementFile, tableName, tableCols, primaryKeys, connection)
-        createInsertStatementOnTable(sqlStatementFile, tableName, tableCols)
+        # createInsertStatementOnTable(sqlStatementFile, tableName, tableCols)
         createMergeStatementOnTableType(sqlStatementFile, tableName, tableCols, primaryKeys, connection)
-        createDataSetterDropStatements(sqlStatementFile, tableName)
+        # createDataSetterDropStatements(sqlStatementFile, tableName)
         createDataSettersForTableType(dataAccessMethodsFile, controllerAccessMethodsFile, tableName, tableCols, primaryKeys, connection)
 
 def insertParamNewLines(paramsString, count = 2, tabs = 4):
@@ -443,7 +449,8 @@ def generateCLRWebAPIRoute(clrParameterNames):
     return routeParamsString.rstrip(slashDelim)
 
 # ACAS functionality only
-def generateDataAccessorsFromStoredProcedure(controllerAccessMethodsFile, dataAccessMethodsFile, connection):
+def generateCLRDataAccessorsFromStoredProcedure(controllerAccessMethodsFile, dataAccessMethodsFile, connection):
+    print('Creating data accessors for all tables')
     dataAccessMethodsFile.write('\n')
     controllerAccessMethodsFile.write('\n')
 
@@ -516,14 +523,14 @@ def generateDataAccessorsFromStoredProcedure(controllerAccessMethodsFile, dataAc
                                               + '}\n\n')
                                    
 def main():
-    with open('../../controllerMethodsFile.cs', 'w') as controllerAccessMethodsFile:
-        with open('../../dataAccessMethodsFile.cs', 'w') as dataAccessMethodsFile:
-            with open('../../sqlStatementFile.sql', 'w') as sqlStatementFile:
+    with open('../../ControllerMethodsFile.cs', 'w') as controllerAccessMethodsFile:
+        with open('../../DataAccessMethodsFile.cs', 'w') as dataAccessMethodsFile:
+            with open('../../SQLStatementFile.sql', 'w') as sqlStatementFile:
                 with pymssql.connect(host='tst25sqldbv04.test.lab.americancapital.com', database='DealSpanDEV') as connection:
                         setProcs(connection)
                         getProcs(connection)
                         getTables(connection)
-                        generateDataAccessorsFromStoredProcedure(controllerAccessMethodsFile, dataAccessMethodsFile, connection)
-                        generateDataSettersFromTableDefinitions(controllerAccessMethodsFile, dataAccessMethodsFile, sqlStatementFile, connection)
+                        generateCLRDataAccessorsFromStoredProcedure(controllerAccessMethodsFile, dataAccessMethodsFile, connection)
+                        generateCLRDataSettersFromTableDefinitions(controllerAccessMethodsFile, dataAccessMethodsFile, sqlStatementFile, connection)
 
 main()
