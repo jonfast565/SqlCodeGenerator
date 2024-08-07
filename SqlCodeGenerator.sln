@@ -1,0 +1,52 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SqlCodeGenerator", "SqlCodeGenerator\SqlCodeGenerator.csproj", "{31220218-9BC6-4FDB-95F2-EF407A4FA3FF}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SqlCodeGenerator.PostgresAdapter", "SqlCodeGenerator.PostgresAdapter\SqlCodeGenerator.PostgresAdapter.csproj", "{51AFE4D0-A6D0-441C-9390-AD971ABB10A1}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SqlCodeGenerator.Interfaces", "SqlCodeGenerator.Interfaces\SqlCodeGenerator.Interfaces.csproj", "{9CA65FCE-6D04-449A-87B2-81A023E8CDC2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SqlCodeGenerator.CSharpAdapter", "SqlCodeGenerator.CSharpAdapter\SqlCodeGenerator.CSharpAdapter.csproj", "{214C7D52-8BE7-4756-9182-F86BBE831F6C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SqlCodeGenerator.Models", "SqlCodeGenerator.Models\SqlCodeGenerator.Models.csproj", "{D0259CFC-05E6-48BD-BDED-25432AF30552}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SqlCodeGenerator.Utilities", "SqlCodeGenerator.Utilities\SqlCodeGenerator.Utilities.csproj", "{55967F45-9001-405A-BAC8-7357BF1E19BE}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SqlCodeGenerator.Factories", "SqlCodeGenerator.Factories\SqlCodeGenerator.Factories.csproj", "{1387FCD5-B4C7-48D5-9F15-736FA5AF73AB}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{31220218-9BC6-4FDB-95F2-EF407A4FA3FF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{31220218-9BC6-4FDB-95F2-EF407A4FA3FF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{31220218-9BC6-4FDB-95F2-EF407A4FA3FF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{31220218-9BC6-4FDB-95F2-EF407A4FA3FF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{51AFE4D0-A6D0-441C-9390-AD971ABB10A1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{51AFE4D0-A6D0-441C-9390-AD971ABB10A1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{51AFE4D0-A6D0-441C-9390-AD971ABB10A1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{51AFE4D0-A6D0-441C-9390-AD971ABB10A1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{9CA65FCE-6D04-449A-87B2-81A023E8CDC2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{9CA65FCE-6D04-449A-87B2-81A023E8CDC2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{9CA65FCE-6D04-449A-87B2-81A023E8CDC2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{9CA65FCE-6D04-449A-87B2-81A023E8CDC2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{214C7D52-8BE7-4756-9182-F86BBE831F6C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{214C7D52-8BE7-4756-9182-F86BBE831F6C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{214C7D52-8BE7-4756-9182-F86BBE831F6C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{214C7D52-8BE7-4756-9182-F86BBE831F6C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D0259CFC-05E6-48BD-BDED-25432AF30552}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D0259CFC-05E6-48BD-BDED-25432AF30552}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D0259CFC-05E6-48BD-BDED-25432AF30552}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D0259CFC-05E6-48BD-BDED-25432AF30552}.Release|Any CPU.Build.0 = Release|Any CPU
+		{55967F45-9001-405A-BAC8-7357BF1E19BE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{55967F45-9001-405A-BAC8-7357BF1E19BE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{55967F45-9001-405A-BAC8-7357BF1E19BE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{55967F45-9001-405A-BAC8-7357BF1E19BE}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1387FCD5-B4C7-48D5-9F15-736FA5AF73AB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1387FCD5-B4C7-48D5-9F15-736FA5AF73AB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1387FCD5-B4C7-48D5-9F15-736FA5AF73AB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1387FCD5-B4C7-48D5-9F15-736FA5AF73AB}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

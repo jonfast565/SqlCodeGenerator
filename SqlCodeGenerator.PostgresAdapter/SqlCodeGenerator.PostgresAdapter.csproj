@@ -1,0 +1,19 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <RootNamespace>PostgresAdapter</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\SqlCodeGenerator.Interfaces\SqlCodeGenerator.Interfaces.csproj" />
+      <ProjectReference Include="..\SqlCodeGenerator.Utilities\SqlCodeGenerator.Utilities.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <PackageReference Include="Npgsql" Version="8.0.3" />
+    </ItemGroup>
+
+</Project>
